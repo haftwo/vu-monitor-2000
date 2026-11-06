@@ -21,8 +21,13 @@ Each stream gets a card with:
 | **Alarms** | Card flashes red on silence (default below -50 dBFS for 10 s), stream error or no audio. Streams reconnect automatically with back-off. |
 | **Listen** | Headphone button solos a stream to your speakers; volume in the toolbar. |
 
-Metering runs in the browser in an AudioWorklet, so every sample is measured
-(no missed peaks). Checked against ffmpeg's `ebur128` filter: a -18 dBFS tone
+Metering runs in the browser and measures every sample (no missed peaks). Over
+HTTPS or on `localhost` it runs in an AudioWorklet on the audio thread; over plain
+HTTP (e.g. `http://unraid:8080`) browsers disable AudioWorklet, so it falls back
+to a ScriptProcessor running the same code on the page's main thread. Readings
+are identical. The only difference: on plain HTTP a mono source arrives as two
+identical channels, so it shows MONO but reads 3 LU higher in loudness than over
+HTTPS. Use HTTPS (e.g. through the Cloudflare tunnel) for a busy wall of streams. Checked against ffmpeg's `ebur128` filter: a -18 dBFS tone
 reads 0.0 VU, and loudness and true peak agree to within 0.1 dB.
 
 Keys: `D` digital, `A` analogue, `R` reset peaks, `1`–`9` listen, `0` stop
@@ -133,7 +138,8 @@ vumon/server.py          web server, stream store, HLS proxy, URL tester
 vumon/web/index.html     monitor page
 vumon/web/monitor.js     stream playback, reconnects, UI
 vumon/web/meters.js      ballistics and canvas drawing (digital + analogue)
-vumon/web/meter-worklet.js  sample-accurate peak / true peak / VU / BS.1770 / correlation
+vumon/web/meter-dsp.js   sample-accurate peak / true peak / VU / BS.1770 / correlation
+vumon/web/meter-worklet.js  AudioWorklet wrapper (HTTPS / localhost)
 vumon/web/admin.*        admin page
 unraid/                  Unraid container template
 ```

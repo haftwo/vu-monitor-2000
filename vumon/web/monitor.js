@@ -50,9 +50,21 @@ function loadHls() {
   return hlsLoader;
 }
 
+let useWorklet = false;
+let MeterDSP = null;
+
 async function startAudio() {
   audioCtx = new AudioContext({ latencyHint: 'playback' });
-  await audioCtx.audioWorklet.addModule('meter-worklet.js');
+  // AudioWorklet only exists on secure pages (HTTPS or localhost). On plain
+  // HTTP, e.g. http://unraid:8080, fall back to a ScriptProcessor running the
+  // same DSP on the main thread.
+  if (audioCtx.audioWorklet && window.isSecureContext) {
+    await audioCtx.audioWorklet.addModule('meter-worklet.js');
+    useWorklet = true;
+  } else {
+    ({ MeterDSP } = await import('./meter-dsp.js'));
+    console.info('Not a secure context: using ScriptProcessor metering');
+  }
   master = audioCtx.createGain();
   master.gain.value = settings.volume;
   master.connect(audioCtx.destination);
@@ -151,8 +163,26 @@ class StreamMonitor {
     this.media = media;
 
     this.source = audioCtx.createMediaElementSource(media);
-    this.worklet = new AudioWorkletNode(audioCtx, 'meter-processor', { numberOfInputs: 1, numberOfOutputs: 1 });
-    this.worklet.port.onmessage = (e) => this.meter.ingest(e.data, settings, performance.now() / 1000);
+    const onReport = (r) => this.meter.ingest(r, settings, performance.now() / 1000);
+    if (useWorklet) {
+      this.worklet = new AudioWorkletNode(audioCtx, 'meter-processor', { numberOfInputs: 1, numberOfOutputs: 1 });
+      this.worklet.port.onmessage = (e) => onReport(e.data);
+      this.resetI = () => this.worklet?.port.postMessage('resetI');
+    } else {
+      const dsp = new MeterDSP(audioCtx.sampleRate, onReport);
+      this.worklet = audioCtx.createScriptProcessor(2048, 2, 1);
+      this.worklet.onaudioprocess = (e) => {
+        const b = e.inputBuffer;
+        const L = b.getChannelData(0), R = b.getChannelData(1);
+        let same = true, any = false;
+        for (let i = 0; i < L.length; i += 7) {
+          if (L[i] !== R[i]) { same = false; break; }
+          if (L[i] !== 0) any = true;
+        }
+        dsp.process([L, R], same && any);
+      };
+      this.resetI = () => dsp.resetIntegrated();
+    }
     this.listenGain = audioCtx.createGain();
     this.listenGain.gain.value = this.listening ? 1 : 0;
     this.source.connect(this.worklet);
@@ -252,6 +282,7 @@ class StreamMonitor {
     clearInterval(this.watchdog);
     if (this.hls) { this.hls.destroy(); this.hls = null; }
     if (this.media) { this.media.pause(); this.media.removeAttribute('src'); this.media.load(); }
+    if (this.worklet) this.worklet.onaudioprocess = null;
     for (const n of [this.source, this.worklet, this.listenGain]) { try { n?.disconnect(); } catch { /* */ } }
     this.media = this.source = this.worklet = this.listenGain = null;
     this.mediaRecovered = false;
@@ -270,7 +301,7 @@ class StreamMonitor {
     if (this.listenGain) this.listenGain.gain.setTargetAtTime(on ? 1 : 0, audioCtx.currentTime, 0.02);
   }
 
-  resetIntegrated() { this.worklet?.port.postMessage('resetI'); }
+  resetIntegrated() { this.resetI?.(); }
 
   // -- drawing -------------------------------------------------------------
 
