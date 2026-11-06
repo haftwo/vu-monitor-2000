@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>vu-monitor-2000</Name>
+  <Repository>ghcr.io/haftwo/vu-monitor-2000:latest</Repository>
+  <Registry>https://github.com/haftwo/vu-monitor-2000/pkgs/container/vu-monitor-2000</Registry>
+  <Network>bridge</Network>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/haftwo/vu-monitor-2000</Support>
+  <Project>https://github.com/haftwo/vu-monitor-2000</Project>
+  <Overview>Audio level monitoring for HLS streams, for broadcast and audio engineers. Digital peak (dBTP) or analogue VU meters for left and right, EBU R128 loudness, phase correlation and silence alarms. Add streams on the admin page.</Overview>
+  <Category>MediaServer:Music Tools: Status:Stable</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <Icon>https://raw.githubusercontent.com/haftwo/vu-monitor-2000/main/vumon/web/logo.png</Icon>
+  <ExtraParams>--restart unless-stopped</ExtraParams>
+  <Config Name="Web UI port" Target="8080" Default="8080" Mode="tcp" Description="Monitor page, admin page and stream proxy" Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/vu-monitor-2000" Mode="rw" Description="Holds streams.json (the stream list). Tiny." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/vu-monitor-2000</Config>
+  <Config Name="Admin password" Target="VUMON_ADMIN_PASSWORD" Default="" Mode="" Description="Protects /admin (user name below). Leave blank only on a trusted LAN." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Admin user" Target="VUMON_ADMIN_USER" Default="admin" Mode="" Description="User name for the admin page" Type="Variable" Display="advanced" Required="false" Mask="false">admin</Config>
+  <Config Name="Log level" Target="VUMON_LOG_LEVEL" Default="INFO" Mode="" Description="INFO or DEBUG" Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
+  <Config Name="Time zone" Target="TZ" Default="Australia/Melbourne" Mode="" Description="Log timestamps only" Type="Variable" Display="advanced" Required="false" Mask="false">Australia/Melbourne</Config>
+</Container>

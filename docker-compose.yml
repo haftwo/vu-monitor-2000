@@ -1,0 +1,13 @@
+services:
+  vu-monitor:
+    image: ghcr.io/haftwo/vu-monitor-2000:latest
+    # build: .            # or build locally instead of pulling
+    container_name: vu-monitor-2000
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      VUMON_ADMIN_PASSWORD: "change-me"
+      TZ: Australia/Melbourne
+    restart: unless-stopped

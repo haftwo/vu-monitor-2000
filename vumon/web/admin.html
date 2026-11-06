@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin · VU Monitor 2000</title>
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="../"><img src="logo.svg" alt="" width="26" height="26"><span>VU Monitor <b>2000</b></span></a>
+    <span class="muted">Admin</span>
+    <div class="controls"><a class="btn" href="../">Back to monitoring</a></div>
+  </header>
+
+  <main class="admin">
+    <section class="panel">
+      <h2 id="form-title">Add a stream</h2>
+      <form id="form" class="add-form" autocomplete="off">
+        <label>Name<input id="f-name" type="text" required maxlength="80" placeholder="e.g. Triple J Sydney"></label>
+        <label>Stream URL<input id="f-url" type="url" required placeholder="https://…/playlist.m3u8"></label>
+        <label class="wide">Notes (optional)<input id="f-notes" type="text" maxlength="200" placeholder="e.g. Main network feed, CDN A"></label>
+        <div class="row">
+          <label title="Show this stream on the monitor page"><input id="f-enabled" type="checkbox" checked> Enabled</label>
+          <label title="Fetch the stream through this server. Needed for metering unless the stream sends CORS headers."><input id="f-proxy" type="checkbox" checked> Route through server (recommended)</label>
+          <span class="spacer"></span>
+          <button type="button" id="test" class="btn">Test URL</button>
+          <button type="button" id="cancel" class="btn" hidden>Cancel</button>
+          <button id="save" class="btn primary">Add stream</button>
+        </div>
+        <div id="test-result" class="test-result" hidden></div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>Streams</h2>
+      <table class="streams">
+        <thead><tr><th>Name</th><th>URL</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p id="none" class="muted" hidden>No streams yet. Add one above.</p>
+      <p class="muted small">
+        HLS (<code>.m3u8</code>) master or media playlists are supported, as are plain
+        Icecast/Shoutcast MP3 or AAC streams. For master playlists the monitor picks the
+        highest-bitrate rendition. The monitor page picks up changes within 10 seconds.
+      </p>
+    </section>
+  </main>
+
+  <script type="module" src="admin.js"></script>
+</body>
+</html>
