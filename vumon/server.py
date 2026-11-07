@@ -13,6 +13,7 @@ Python standard library only.
 from __future__ import annotations
 
 import base64
+import hashlib
 import hmac
 import json
 import logging
@@ -30,10 +31,27 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, quote, urljoin, urlsplit
 from urllib.request import Request, urlopen
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 log = logging.getLogger("vumon")
 
 WEB_DIR = Path(__file__).parent / "web"
+
+
+def _asset_version() -> str:
+    """Short hash of the web files, so every release gets new asset URLs."""
+    h = hashlib.sha1()
+    for f in sorted(WEB_DIR.rglob("*")):
+        if f.is_file():
+            h.update(str(f.relative_to(WEB_DIR)).encode())
+            h.update(f.read_bytes())
+    return h.hexdigest()[:10]
+
+
+ASSET_VERSION = _asset_version()
+# Local .js/.css references in pages and modules get ?v=<version> appended, so
+# browsers and caches (e.g. Cloudflare) never mix files from two releases.
+_HTML_REF = re.compile(r'((?:src|href)=")((?!https?:|//|\.\./|#)[\w./-]+\.(?:js|css))(")')
+_JS_REF = re.compile(r"""((?:from\s*|import\(\s*|addModule\(\s*)['"])(\./[\w./-]+\.js)(['"])""")
 USER_AGENT = f"vu-monitor-2000/{VERSION}"
 UPSTREAM_TIMEOUT = 15
 MAX_PLAYLIST_BYTES = 4 * 1024 * 1024
@@ -383,10 +401,19 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_error_json(404, "Not found")
         body = target.read_bytes()
         ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+        stamp = lambda m: f"{m.group(1)}{m.group(2)}?v={ASSET_VERSION}{m.group(3)}"
+        if target.suffix == ".html":
+            body = _HTML_REF.sub(stamp, body.decode("utf-8")).encode("utf-8")
+            cache = "no-store"
+        elif target.suffix == ".js":
+            body = _JS_REF.sub(stamp, body.decode("utf-8")).encode("utf-8")
+            cache = "no-cache"
+        else:
+            cache = "no-cache"
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Cache-Control", cache)
         self.end_headers()
         if method != "HEAD":
             self.wfile.write(body)

@@ -70,7 +70,7 @@ async function startAudio() {
   // HTTP, e.g. http://unraid:8080, fall back to a ScriptProcessor running the
   // same DSP on the main thread.
   if (audioCtx.audioWorklet && window.isSecureContext) {
-    await audioCtx.audioWorklet.addModule('meter-worklet.js');
+    await audioCtx.audioWorklet.addModule('./meter-worklet.js');
     useWorklet = true;
   } else {
     ({ MeterDSP } = await import('./meter-dsp.js'));
