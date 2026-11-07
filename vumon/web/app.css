@@ -63,7 +63,8 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); 
 
 main { padding: 16px; }
 .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
-body[data-mode="analog"] .grid { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
+body:is([data-mode="analog"], [data-mode="average"], [data-mode="spectrum"], [data-mode="dynamics"]) .grid {
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
 
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 10px 12px 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0;
@@ -165,5 +166,5 @@ table.streams { width: 100%; border-collapse: collapse; }
 @media (max-width: 640px) {
   .add-form, .form-grid { grid-template-columns: 1fr; }
   .controls { margin-left: 0; }
-  body[data-mode="analog"] .grid { grid-template-columns: 1fr; }
+  body:not([data-mode="digital"]) .grid { grid-template-columns: 1fr; }
 }

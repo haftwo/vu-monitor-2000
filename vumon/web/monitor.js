@@ -1,11 +1,18 @@
 import { MeterState, drawDigital, drawAnalog, analogHeightFor, fmtDb } from './meters.js';
+import { LevelStats, drawLevelHistory, drawDynamics } from './stats.js';
+import { SpectrumState, drawSpectrum } from './spectrum.js';
+
+const MODES = ['digital', 'analog', 'average', 'spectrum', 'dynamics'];
+const MODE_KEYS = { d: 'digital', a: 'analog', l: 'average', f: 'spectrum', n: 'dynamics' };
+const RESET_LABEL = { digital: 'Reset peaks', analog: 'Reset peaks', average: 'Reset average',
+  spectrum: 'Reset spectrum', dynamics: 'Reset stats' };
 
 // ---------------------------------------------------------------------------
 // Settings (per browser)
 // ---------------------------------------------------------------------------
 
 const DEFAULTS = {
-  mode: 'digital',      // 'digital' | 'analog'
+  mode: 'digital',      // 'digital' | 'analog' | 'average' | 'spectrum' | 'dynamics'
   ref: -18,             // dBFS that reads 0 VU (alignment level)
   peak: 'tp',           // 'tp' (true peak) | 'sample'
   amber: -9,            // dBFS: digital meter turns amber (permitted max level)
@@ -14,6 +21,8 @@ const DEFAULTS = {
   silenceDb: -50,       // below this ...
   silenceSec: 10,       // ... for this long = silence alarm
   target: -23,          // loudness target, LUFS
+  statsWindow: 5,       // minutes, for the Average and SNR / DR views
+  rtaSpeed: 'fast',     // spectrum response: 'fast' (125 ms) | 'slow' (1 s)
   volume: 0.8,
   soloExclusive: true,
 };
@@ -27,6 +36,7 @@ function saveSettings() {
   try { localStorage.setItem('vumon.settings', JSON.stringify(settings)); } catch { /* private mode */ }
 }
 const settings = loadSettings();
+if (!MODES.includes(settings.mode)) settings.mode = 'digital';
 
 // ---------------------------------------------------------------------------
 // Audio graph
@@ -34,6 +44,7 @@ const settings = loadSettings();
 
 let audioCtx = null;
 let master = null;
+let mutedSink = null;   // keeps analysers running without being heard
 let hlsLoader = null;
 
 function loadHls() {
@@ -68,6 +79,9 @@ async function startAudio() {
   master = audioCtx.createGain();
   master.gain.value = settings.volume;
   master.connect(audioCtx.destination);
+  mutedSink = audioCtx.createGain();
+  mutedSink.gain.value = 0;
+  mutedSink.connect(audioCtx.destination);
   await audioCtx.resume();
 }
 
@@ -81,6 +95,8 @@ class StreamMonitor {
   constructor(cfg) {
     this.cfg = cfg;
     this.meter = new MeterState();
+    this.stats = new LevelStats(settings.statsWindow);
+    this.spectrum = new SpectrumState();
     this.status = 'idle';
     this.detail = '';
     this.listening = false;
@@ -135,8 +151,7 @@ class StreamMonitor {
     this.$('h2').title = this.cfg.notes || this.cfg.url;
     this.$('.listen').addEventListener('click', () => toggleListen(this));
     this.$('.loud').addEventListener('click', () => this.resetIntegrated());
-    this.canvas.addEventListener('click', () => this.meter.resetPeaks());
-    this.canvas.title = 'Click to reset peak / OVER';
+    this.canvas.addEventListener('click', () => this.resetView());
   }
 
   setStatus(status, detail = '') {
@@ -163,7 +178,7 @@ class StreamMonitor {
     this.media = media;
 
     this.source = audioCtx.createMediaElementSource(media);
-    const onReport = (r) => this.meter.ingest(r, settings, performance.now() / 1000);
+    const onReport = (r) => { this.meter.ingest(r, settings, performance.now() / 1000); this.stats.ingest(r); };
     if (useWorklet) {
       this.worklet = new AudioWorkletNode(audioCtx, 'meter-processor', { numberOfInputs: 1, numberOfOutputs: 1 });
       this.worklet.port.onmessage = (e) => onReport(e.data);
@@ -188,6 +203,7 @@ class StreamMonitor {
     this.source.connect(this.worklet);
     this.worklet.connect(audioCtx.destination); // silent output; keeps the worklet running
     this.source.connect(this.listenGain).connect(master);
+    this.spectrum.attach(audioCtx, this.source, mutedSink);
 
     media.addEventListener('playing', () => { this.retries = 0; this.setStatus('live'); });
     media.addEventListener('waiting', () => this.setStatus('buffering'));
@@ -283,6 +299,7 @@ class StreamMonitor {
     if (this.hls) { this.hls.destroy(); this.hls = null; }
     if (this.media) { this.media.pause(); this.media.removeAttribute('src'); this.media.load(); }
     if (this.worklet) this.worklet.onaudioprocess = null;
+    this.spectrum.detach();
     for (const n of [this.source, this.worklet, this.listenGain]) { try { n?.disconnect(); } catch { /* */ } }
     this.media = this.source = this.worklet = this.listenGain = null;
     this.mediaRecovered = false;
@@ -303,18 +320,28 @@ class StreamMonitor {
 
   resetIntegrated() { this.resetI?.(); }
 
+  // Reset whatever the current view is showing.
+  resetView() {
+    if (settings.mode === 'average' || settings.mode === 'dynamics') this.stats.reset();
+    else if (settings.mode === 'spectrum') this.spectrum.reset();
+    else this.meter.resetPeaks();
+  }
+
   // -- drawing -------------------------------------------------------------
 
   draw(dt, now) {
     const m = this.meter;
     m.tick(dt, settings, now);
-    if (settings.mode === 'analog') {
-      const h = analogHeightFor(this.canvas.clientWidth);
-      if (this.canvas.style.height !== h + 'px') this.canvas.style.height = h + 'px';
-      drawAnalog(this.canvas, m, settings, now);
-    } else {
-      if (this.canvas.style.height !== '') this.canvas.style.height = '';
-      drawDigital(this.canvas, m, settings, now);
+    if (this.stats.windowMin !== settings.statsWindow) this.stats.setWindow(settings.statsWindow);
+    this.spectrum.sample(now, settings, this.status === 'live');
+    const h = settings.mode === 'analog' ? analogHeightFor(this.canvas.clientWidth) + 'px' : '';
+    if (this.canvas.style.height !== h) this.canvas.style.height = h;
+    switch (settings.mode) {
+      case 'analog': drawAnalog(this.canvas, m, settings, now); break;
+      case 'average': drawLevelHistory(this.canvas, this.stats, settings, now); break;
+      case 'spectrum': drawSpectrum(this.canvas, this.spectrum, settings, now); break;
+      case 'dynamics': drawDynamics(this.canvas, this.stats, settings, now); break;
+      default: drawDigital(this.canvas, m, settings, now);
     }
 
     // footer, ~10 Hz is plenty
@@ -373,6 +400,7 @@ async function syncStreams() {
     }
     if (!mon) {
       mon = new StreamMonitor(cfg);
+      mon.canvas.title = `Click to ${RESET_LABEL[settings.mode].toLowerCase()}`;
       monitors.set(cfg.id, mon);
       if (running) mon.start();
     } else {
@@ -406,11 +434,14 @@ function applyMode() {
   for (const b of document.querySelectorAll('[data-set-mode]')) {
     b.setAttribute('aria-pressed', String(b.dataset.setMode === settings.mode));
   }
+  document.getElementById('reset-peaks').textContent = RESET_LABEL[settings.mode];
+  for (const m of monitors.values()) m.canvas.title = `Click to ${RESET_LABEL[settings.mode].toLowerCase()}`;
 }
+function setMode(mode) { settings.mode = mode; saveSettings(); applyMode(); }
 
 function bindControls() {
   for (const b of document.querySelectorAll('[data-set-mode]')) {
-    b.addEventListener('click', () => { settings.mode = b.dataset.setMode; saveSettings(); applyMode(); });
+    b.addEventListener('click', () => setMode(b.dataset.setMode));
   }
   const bindSelect = (id, key, parse = Number) => {
     const el = document.getElementById(id);
@@ -425,6 +456,8 @@ function bindControls() {
   bindSelect('s-silence-db', 'silenceDb');
   bindSelect('s-silence-sec', 'silenceSec');
   bindSelect('s-target', 'target');
+  bindSelect('s-window', 'statsWindow');
+  bindSelect('s-rta', 'rtaSpeed', String);
   const solo = document.getElementById('s-solo');
   solo.checked = settings.soloExclusive;
   solo.addEventListener('change', () => { settings.soloExclusive = solo.checked; saveSettings(); });
@@ -437,7 +470,7 @@ function bindControls() {
   });
 
   document.getElementById('reset-peaks').addEventListener('click', () => {
-    for (const m of monitors.values()) m.meter.resetPeaks();
+    for (const m of monitors.values()) m.resetView();
   });
   document.getElementById('reset-loudness').addEventListener('click', () => {
     for (const m of monitors.values()) m.resetIntegrated();
@@ -468,11 +501,10 @@ function bindControls() {
     for (const m of monitors.values()) m.start();
   });
 
-  // Keyboard: D/A switch meters, R resets peaks, 1-9 solo a stream, 0/Esc stops listening
+  // Keyboard: D/A/L/F/N switch meters, R resets the view, 1-9 solo a stream, 0/Esc stops listening
   document.addEventListener('keydown', (e) => {
     if (e.target.closest('input, select, dialog')) return;
-    if (e.key === 'd') { settings.mode = 'digital'; saveSettings(); applyMode(); }
-    else if (e.key === 'a') { settings.mode = 'analog'; saveSettings(); applyMode(); }
+    if (MODE_KEYS[e.key]) setMode(MODE_KEYS[e.key]);
     else if (e.key === 'r') document.getElementById('reset-peaks').click();
     else if (e.key === '0' || e.key === 'Escape') for (const m of monitors.values()) m.setListening(false);
     else if (/^[1-9]$/.test(e.key)) {

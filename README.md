@@ -1,9 +1,10 @@
 # VU Monitor 2000
 
 Audio level monitoring for HLS streams, built for broadcast and audio engineers.
-Put any number of streams on one page and watch left/right levels on either
-**digital peak meters** or **analogue VU meters**, with loudness, phase
-correlation and silence alarms.
+Put any number of streams on one page and watch left/right levels on
+**digital peak meters** or **analogue VU meters**, or switch to **average level
+over time**, a **frequency response** analyser or **SNR / dynamic range**
+figures, with loudness, phase correlation and silence alarms throughout.
 
 ![logo](vumon/web/logo.png)
 
@@ -15,6 +16,9 @@ Each stream gets a card with:
 |---|---|
 | **Digital meters** | Vertical L/R bargraphs, -60 to 0 dBFS (top 20 dB expanded). True peak (4× oversampled, dBTP) or sample peak. IEC 60268-18 fall-back (20 dB / 1.7 s), peak hold, max-since-reset readout, latching **OVER** at -0.1 dBFS. Green/amber/red zones (default amber from -9, red from -1 dBTP). Alignment level marked. |
 | **Analogue VU** | A pair of moving-coil style VU meters with IEC 60268-17 ballistics (99 % in 300 ms, ~1.3 % overshoot), -20 to +3 VU and % scale, peak LED. |
+| **Average** | RMS level of L and R over time (1 s points) across a sliding window of 1, 5, 15 or 60 minutes, with the alignment level and **Leq** (energy-average level) drawn on the graph. Readouts: Leq L / R (dBFS), average loudness over the window (LUFS, -70 LUFS gated), loudest and quietest second. |
+| **Spectrum** | Frequency response as a 1/3-octave real-time analyser, 31 bands 20 Hz – 20 kHz. Live bars (fast 125 ms or slow 1 s), peak hold, and an amber **long-term average** curve showing the programme's tonal balance since the last reset. Calibrated so a full-scale sine reads 0 dBFS in its band. |
+| **SNR / DR** | Over the same sliding window: **SNR (est.)** – loud passages (95th percentile of 400 ms RMS) above the **noise floor** (5th percentile, i.e. the pauses); **dynamic range** – highest true peak above the noise floor; **LRA** (EBU Tech 3342 loudness range); **crest factor** (peak to RMS); **PLR** (peak to loudness). A histogram shows the level distribution with the noise floor, P95 and peak marked. Digital black reads as ∞. |
 | **Reference** | 0 VU = -18 dBFS (EBU) by default; also -20 (SMPTE), -24, -16, -14, -12. A sine whose peak is at the reference reads 0 VU. |
 | **Loudness** | EBU R128 / ITU-R BS.1770-4 momentary, short-term and gated integrated LUFS. Green within ±1 LU of target (-23 LUFS default, or -24 LKFS OP-59/A85). |
 | **Correlation** | Phase correlation, -1 to +1. |
@@ -30,9 +34,11 @@ identical channels, so it shows MONO but reads 3 LU higher in loudness than over
 HTTPS. Use HTTPS (e.g. through the Cloudflare tunnel) for a busy wall of streams. Checked against ffmpeg's `ebur128` filter: a -18 dBFS tone
 reads 0.0 VU, and loudness and true peak agree to within 0.1 dB.
 
-Keys: `D` digital, `A` analogue, `R` reset peaks, `1`–`9` listen, `0` stop
-listening. Click a meter to reset its peaks; click the loudness readout to reset
-integrated loudness. Add `?kiosk` to the URL to hide the toolbar for a wall
+Keys: `D` digital, `A` analogue, `L` average, `F` spectrum (frequency),
+`N` SNR / DR (noise), `R` reset, `1`–`9` listen, `0` stop listening. Click a
+meter to reset what it shows (peaks, average, spectrum or statistics); click the
+loudness readout to reset integrated loudness. The averaging window and spectrum
+speed are in Settings. Add `?kiosk` to the URL to hide the toolbar for a wall
 display. Meter settings are saved per browser.
 
 ## Admin page
@@ -128,6 +134,11 @@ own HLS support (Safari, recent Chrome).
   affected.
 - Mono streams are shown on both meters with a MONO badge and counted once for
   loudness. For 5.1 streams the first two channels are metered.
+- SNR is estimated from programme, since a live stream carries no test signal:
+  it's the gap between loud passages and the quietest 5 % of the window. It needs
+  some pauses in the window to find the noise floor; on wall-to-wall programme it
+  shows the programme's own dynamics instead. A 1 kHz tone with -80 dBFS noise in
+  the gaps reads 59 dB.
 - Levels shown are what the browser decodes: after the stream's codec, before
   any output volume.
 
@@ -138,7 +149,9 @@ vumon/server.py          web server, stream store, HLS proxy, URL tester
 vumon/web/index.html     monitor page
 vumon/web/monitor.js     stream playback, reconnects, UI
 vumon/web/meters.js      ballistics and canvas drawing (digital + analogue)
-vumon/web/meter-dsp.js   sample-accurate peak / true peak / VU / BS.1770 / correlation
+vumon/web/stats.js       average level, Leq, SNR / noise floor, LRA, crest, PLR
+vumon/web/spectrum.js    1/3-octave frequency response analyser
+vumon/web/meter-dsp.js   sample-accurate peak / true peak / VU / RMS / BS.1770 / correlation
 vumon/web/meter-worklet.js  AudioWorklet wrapper (HTTPS / localhost)
 vumon/web/admin.*        admin page
 unraid/                  Unraid container template

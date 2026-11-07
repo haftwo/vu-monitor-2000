@@ -7,6 +7,7 @@
 //   pk  sample peak (linear)
 //   tp  true peak, 4x oversampled (linear) - ITU-R BS.1770 style
 //   ma  mean absolute value (for the VU meter's rectified average)
+//   ms  mean square (unweighted RMS^2, for the average / SNR meters)
 // Shared:
 //   lr, ll, rr   cross / auto products for the correlation meter
 //   M, S, I      momentary (400 ms), short-term (3 s), integrated loudness, LUFS
@@ -61,7 +62,7 @@ class Channel {
     this.hpos = 0;
     this.reset();
   }
-  reset() { this.pk = 0; this.tp = 0; this.sumAbs = 0; }
+  reset() { this.pk = 0; this.tp = 0; this.sumAbs = 0; this.sumSq = 0; }
 }
 
 export class MeterDSP {
@@ -141,6 +142,7 @@ export class MeterDSP {
         const a = x < 0 ? -x : x;
         if (a > ch.pk) ch.pk = a;
         ch.sumAbs += a;
+        ch.sumSq += x * x;
 
         // true peak
         ch.hist[ch.hpos] = x;
@@ -179,6 +181,7 @@ export class MeterDSP {
     this.post({
       pk: [a.pk, bb.pk], tp: [Math.max(a.tp, a.pk), Math.max(bb.tp, bb.pk)],
       ma: [a.sumAbs / this.n, bb.sumAbs / this.n],
+      ms: [a.sumSq / this.n, bb.sumSq / this.n],
       lr: mono ? 1 : this.lr, ll: mono ? 1 : this.ll, rr: mono ? 1 : this.rr,
       M: lufs(this.meanOf(4)), S: lufs(this.meanOf(30)), I: this.I, mono,
     });
