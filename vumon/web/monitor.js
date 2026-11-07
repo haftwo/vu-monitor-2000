@@ -178,7 +178,10 @@ class StreamMonitor {
     this.media = media;
 
     this.source = audioCtx.createMediaElementSource(media);
-    const onReport = (r) => { this.meter.ingest(r, settings, performance.now() / 1000); this.stats.ingest(r); };
+    const onReport = (r) => {
+      this.meter.ingest(r, settings, performance.now() / 1000);
+      try { this.stats.ingest(r); } catch (e) { if (!this.statsErr) { this.statsErr = true; console.error(e); } }
+    };
     if (useWorklet) {
       this.worklet = new AudioWorkletNode(audioCtx, 'meter-processor', { numberOfInputs: 1, numberOfOutputs: 1 });
       this.worklet.port.onmessage = (e) => onReport(e.data);

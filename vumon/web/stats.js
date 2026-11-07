@@ -105,7 +105,14 @@ export class LevelStats {
   }
 
   ingest(r) {
-    this.aL += r.ms[0]; this.aR += r.ms[1];
+    // An older cached meter-dsp.js has no mean square; estimate it from the
+    // rectified average (exact for a sine) rather than stop measuring.
+    const ms = r.ms || r.ma.map((m) => (m * Math.PI / 2) ** 2 / 2);
+    if (!r.ms && !this.warned) {
+      this.warned = true;
+      console.warn('meter-dsp.js is out of date (cached?) - RMS estimated. Reload, or update the container.');
+    }
+    this.aL += ms[0]; this.aR += ms[1];
     const pk = Math.max(r.tp[0], r.tp[1]);
     if (pk > this.sPk) this.sPk = pk;
     if (++this.rep < REPORTS_PER_TICK) return;
